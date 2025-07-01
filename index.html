@@ -28,6 +28,12 @@
       background-color: #f8d7da;
       border: 1px solid #f5c6cb;
     }
+    .export-buttons {
+      margin-top: 1em;
+    }
+    .export-buttons button {
+      margin-right: 10px;
+    }
   </style>
 </head>
 <body>
@@ -43,30 +49,65 @@
     <div class="unit-group" id="groupI"><span class="group-label">Group I – General Electives</span></div>
     <div class="unit-group" id="imported"><span class="group-label">Imported Units</span></div>
 
-    <!-- Validation Indicator -->
     <div id="validationIndicator" class="invalid">Please select units according to packaging rules.</div>
 
     <h2>2. Schedule Options</h2>
-    <label>
-      Course Start Date:
-      <input type="date" id="startDate" required />
-    </label>
-    <br /><br />
-    <label>
-      Buffer period after each unit:
+    <label>Course Start Date: <input type="date" id="startDate" required /></label><br /><br />
+    <label>Buffer period after each unit:
       <select id="bufferWeeks">
         <option value="2">2 weeks</option>
         <option value="3">3 weeks</option>
         <option value="4" selected>4 weeks</option>
       </select>
-    </label>
-    <br /><br />
+    </label><br /><br />
     <button type="submit">Generate Schedule</button>
   </form>
 
+  <div class="export-buttons">
+    <button onclick="exportToCSV()">Export to CSV</button>
+    <button onclick="exportToPDF()">Export to PDF</button>
+  </div>
+
   <div id="results" style="margin-top:2em;"></div>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
+
   <script>
+    window.jsPDF = window.jspdf.jsPDF;
+
+    function exportToCSV() {
+      const table = document.querySelector("#results table");
+      if (!table) return alert("No schedule to export");
+      let csv = "";
+      table.querySelectorAll("tr").forEach(row => {
+        const cells = Array.from(row.querySelectorAll("th,td")).map(cell => '"' + cell.textContent.trim().replace(/"/g, '""') + '"');
+        csv += cells.join(",") + "\n";
+      });
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "schedule.csv";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+
+    function exportToPDF() {
+      const table = document.querySelector("#results table");
+      if (!table) return alert("No schedule to export");
+      const doc = new jsPDF();
+      doc.text("CIII CEM Schedule", 14, 16);
+      const rows = [];
+      table.querySelectorAll("tr").forEach(row => {
+        const rowData = Array.from(row.querySelectorAll("th,td")).map(cell => cell.textContent.trim());
+        rows.push(rowData);
+      });
+      doc.autoTable({ head: [rows[0]], body: rows.slice(1), startY: 20 });
+      doc.save("schedule.pdf");
+    }
+
     const coreUnits = [
       { code: "AHCECR309", name: "Conduct an ecological and cultural site inspection prior to works", duration: 4 },
       { code: "AHCWHS302", name: "Contribute to workplace health and safety processes", duration: 4 },
