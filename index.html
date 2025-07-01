@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>CIII CEM Unit Planner (Multi-Group)</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #f7f9fa; }
+    h2 { margin-top: 2em; }
+    table, th, td { border: 1px solid #ccc; border-collapse: collapse; padding: 6px; }
+    th { background: #e0e0e0; }
+    input[type="number"] { width: 60px; }
+    .unit-group { margin-bottom: 1em; padding: 1em; background: #fff; border: 1px solid #ddd; }
+    .group-label { font-weight: bold; font-size: 1.1em; margin-bottom: 0.5em; display: block; }
+    #validationIndicator {
+      margin-top: 1em;
+      font-weight: bold;
+      padding: 0.5em;
+      border-radius: 5px;
+      display: inline-block;
+    }
+    #validationIndicator.valid {
+      color: #155724;
+      background-color: #d4edda;
+      border: 1px solid #c3e6cb;
+    }
+    #validationIndicator.invalid {
+      color: #721c24;
+      background-color: #f8d7da;
+      border: 1px solid #f5c6cb;
+    }
+  </style>
+</head>
+<body>
+  <h1>CIII Conservation & Ecosystem Management – Unit Planner</h1>
+
+  <form id="unitForm">
+    <h2>1. Select Units</h2>
+    <div class="unit-group" id="core-units"><span class="group-label">Core Units (Select all 2)</span></div>
+    <div class="unit-group" id="groupB"><span class="group-label">Group B – Ecological Restoration</span></div>
+    <div class="unit-group" id="groupC"><span class="group-label">Group C – Land, Parks & Wildlife</span></div>
+    <div class="unit-group" id="groupD"><span class="group-label">Group D – Conservation Earthworks</span></div>
+    <div class="unit-group" id="groupG"><span class="group-label">Group G – Fire</span></div>
+    <div class="unit-group" id="groupI"><span class="group-label">Group I – General Electives</span></div>
+    <div class="unit-group" id="imported"><span class="group-label">Imported Units</span></div>
+
+    <!-- Validation Indicator -->
+    <div id="validationIndicator" class="invalid">Please select units according to packaging rules.</div>
+
+    <h2>2. Schedule Options</h2>
+    <label>
+      Course Start Date:
+      <input type="date" id="startDate" required />
+    </label>
+    <br /><br />
+    <label>
+      Buffer period after each unit:
+      <select id="bufferWeeks">
+        <option value="2">2 weeks</option>
+        <option value="3">3 weeks</option>
+        <option value="4" selected>4 weeks</option>
+      </select>
+    </label>
+    <br /><br />
+    <button type="submit">Generate Schedule</button>
+  </form>
+
+  <div id="results" style="margin-top:2em;"></div>
+
+  <script>
+    const coreUnits = [
+      { code: "AHCECR309", name: "Conduct an ecological and cultural site inspection prior to works", duration: 4 },
+      { code: "AHCWHS302", name: "Contribute to workplace health and safety processes", duration: 4 },
+    ];
+
+    const electiveUnits = [
+      { code: "AHCECR301", name: "Maintain native ecosystem areas", duration: 4, groups: ["groupB"] },
+      { code: "AHCECR305", name: "Collect native seed", duration: 4, groups: ["groupB"] },
+      { code: "AHCECR307", name: "Read and interpret maps", duration: 4, groups: ["groupB"] },
+      { code: "AHCPCM303", name: "Identify plant specimens", duration: 4, groups: ["groupB"] },
+      { code: "AHCPMG301", name: "Control weeds", duration: 4, groups: ["groupB"] },
+      { code: "AHCPMG302", name: "Control plant pests, diseases and disorders", duration: 4, groups: ["groupB"] },
+      { code: "AHCFAU302", name: "Identify fauna in the field", duration: 4, groups: ["groupC"] },
+      { code: "AHCLPW310", name: "Supervise park visitor activities", duration: 4, groups: ["groupC"] },
+      { code: "AHCWRK320", name: "Apply environmentally sustainable work practices", duration: 4, groups: ["groupC"] },
+      { code: "AHCBIO303", name: "Apply biosecurity measures", duration: 4, groups: ["groupD", "groupI"] },
+      { code: "AHCMOM302", name: "Perform machinery maintenance", duration: 4, groups: ["groupD"] },
+      { code: "AHCMOM304", name: "Operate machinery and equipment", duration: 4, groups: ["groupD"] },
+      { code: "AHCPCM204", name: "Recognise plants", duration: 4, groups: ["groupD"] },
+      { code: "FWPCOT3325", name: "Operate four wheel drive vehicle on unsealed roads", duration: 4, groups: ["groupG", "groupI"] },
+      { code: "AHCCHM304", name: "Transport and store chemicals", duration: 4, groups: ["groupI"] },
+      { code: "AHCCHM307", name: "Prepare and apply chemicals", duration: 4, groups: ["groupI"] },
+      { code: "AHCLPW313", name: "Undertake water sampling", duration: 4, groups: ["groupI"] },
+      { code: "AHCMOM213", name: "Operate and maintain chainsaws", duration: 4, groups: ["groupI"] },
+      { code: "CPPSSI3011", name: "Produce basic maps", duration: 4, groups: ["groupI"] },
+      { code: "FWPCOT3326", name: "Recover 4WD vehicle", duration: 4, groups: ["groupI"] },
+      { code: "HLTAID011", name: "Provide First Aid", duration: 4, groups: ["groupI"] },
+      { code: "AHCMOM202", name: "Operate tractors", duration: 4, groups: ["imported"] },
+      { code: "AHCMOM207", name: "Conduct front-end loader ops", duration: 4, groups: ["imported"] },
+      { code: "AHCMOM216", name: "Operate side by side utility vehicles", duration: 4, groups: ["imported"] },
+      { code: "AHCMOM217", name: "Operate quad bikes", duration: 4, groups: ["imported"] },
+      { code: "AHCNSY207", name: "Undertake propagation", duration: 4, groups: ["imported"] },
+      { code: "FWPCOT2266", name: "Operate brush cutter", duration: 4, groups: ["imported"] }
+    ];
+
+    function buildUnitCheckboxes() {
+      coreUnits.forEach(unit => {
+        const div = document.createElement("div");
+        div.innerHTML = `
+          <label>
+            <input type="checkbox" value="${unit.code}" data-code="${unit.code}" data-name="${unit.name}" data-groups="core" checked disabled>
+            ${unit.code} – ${unit.name}
+            &nbsp; Duration (weeks): <input type="number" min="1" value="${unit.duration}" class="duration" data-unit="${unit.code}">
+          </label>`;
+        document.getElementById("core-units").appendChild(div);
+      });
+
+      electiveUnits.forEach(unit => {
+        unit.groups.forEach(group => {
+          const div = document.createElement("div");
+          div.innerHTML = `
+            <label>
+              <input type="checkbox" data-code="${unit.code}" data-name="${unit.name}" data-groups="${unit.groups.join(',')}" value="${unit.code}">
+              ${unit.code} – ${unit.name} ${unit.groups.length > 1 ? `(Groups: ${unit.groups.map(g => g.replace("group", "").toUpperCase()).join(", ")})` : ""}
+              &nbsp; Duration (weeks): <input type="number" min="1" value="${unit.duration}" class="duration" data-unit="${unit.code}">
+            </label>`;
+          document.getElementById(group).appendChild(div);
+        });
+      });
+    }
+
+    function getSelectedUnits() {
+      const selected = [];
+
+      document.querySelectorAll("input[type=checkbox]").forEach(cb => {
+        if (cb.checked) {
+          const code = cb.dataset.code;
+          const name = cb.dataset.name;
+          const groups = cb.dataset.groups ? cb.dataset.groups.split(",") : ["core"];
+          const durationInput = document.querySelector(`input.duration[data-unit="${code}"]`);
+          const duration = parseInt(durationInput?.value || 4);
+          selected.push({ code, name, groups, duration });
+        }
+      });
+
+      return selected;
+    }
+
+    function generateSchedule(units, startDate, bufferWeeks) {
+      const schedule = [];
+      let current = new Date(startDate);
+      const spacing = 3;  // This stays as is, but you might want to revisit if you want spacing = duration + buffer
+
+      for (let u of units) {
+        const start = new Date(current);
+        const end = new Date(start);
+        end.setDate(end.getDate() + (u.duration * 7) - 1);
+        const bufferEnd = new Date(end);
+        bufferEnd.setDate(bufferEnd.getDate() + bufferWeeks * 7);
+        schedule.push({ ...u, startDate: formatDate(start), endDate: formatDate(end), bufferEndDate: formatDate(bufferEnd) });
+
+        // Update current date for next unit: Instead of fixed spacing (3 weeks), consider unit duration + buffer
+        current.setDate(bufferEnd.getDate() + 1);
+      }
+      return schedule;
+    }
+
+    // Format Date DD/MM/YYYY
+    function formatDate(d) {
+      const day = String(d.getDate()).padStart(2, "0");
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const year = d.getFullYear();
+      return `${day}/${month}/${year}`;
+    }
+
+    function validate(selected) {
+      const groupCounts = { core: 0, groupI: 0, imported: 0, AtoH: 0 };
+      selected.forEach(u => {
+        if (u.groups.includes("core")) groupCounts.core++;
+        if (u.groups.includes("groupI")) groupCounts.groupI++;
+        if (u.groups.includes("imported")) groupCounts.imported++;
+        if (u.groups.some(g => ["groupB", "groupC", "groupD", "groupG"].includes(g))) groupCounts.AtoH++;
+      });
+
+      const errors = [];
+      if (groupCounts.core !== 2) errors.push("You must include exactly 2 core units.");
+      if (groupCounts.AtoH < 6) errors.push("At least 6 units must be from Groups A–H.");
+      if (groupCounts.groupI > 6) errors.push("Max 6 electives from Group I.");
+      if (groupCounts.imported > 4) errors.push("Max 4 imported electives.");
+      if (selected.length !== 16) errors.push("Exactly 16 units must be selected.");
+
+      return errors;
+    }
+
+    function renderSchedule(schedule, startDate) {
+      const end = new Date(schedule.at(-1).bufferEndDate.split('/').reverse().join('-')); // convert DD/MM/YYYY to Date object
+      const startParts = startDate.split("-");
+      const start = new Date(startParts[0], startParts[1] - 1, startParts[2]);
+
+      const weeks = Math.round((end - start) / (1000 * 60 * 60 * 24 * 7));
+      let out = `<h2>📅 Schedule</h2><p><strong>Duration:</strong> ${weeks} weeks (${formatDate(start)} to ${formatDate(end)})</p>`;
+      if (weeks > 100) out += `<p style="color:red">⚠ Course exceeds 100 weeks (last 4 weeks reserved).</p>`;
+      out += `<table><tr><th>Code</th><th>Name</th><th>Start</th><th>End</th><th>Buffer Ends</th></tr>`;
+      schedule.forEach(u => out += `<tr><td>${u.code}</td><td>${u.name}</td><td>${u.startDate}</td><td>${u.endDate}</td><td>${u.bufferEndDate}</td></tr>`);
+      out += `</table>`;
+      document.getElementById("results").innerHTML = out;
+    }
+
+    // Update validation indicator (called on checkbox or duration change)
+    function updateValidationIndicator() {
+      const selected = getSelectedUnits();
+      const errors = validate(selected);
+      const indicator = document.getElementById("validationIndicator");
+      if (errors.length === 0) {
+        indicator.textContent = "✅ Selection meets qualification packaging rules.";
+        indicator.classList.remove("invalid");
+        indicator.classList.add("valid");
+      } else {
+        indicator.textContent = "❌ " + errors.join(" ");
+        indicator.classList.remove("valid");
+        indicator.classList.add("invalid");
+      }
+    }
+
+    document.getElementById("unitForm").addEventListener("submit", e => {
+      e.preventDefault();
+      const selected = getSelectedUnits();
+      const errors = validate(selected);
+      if (errors.length) return alert(errors.join("\n"));
+      const startDate = document.getElementById("startDate").value;
+      const buffer = parseInt(document.getElementById("bufferWeeks").value);
+      const schedule = generateSchedule(selected, startDate, buffer);
+      renderSchedule(schedule, startDate);
+    });
+
+    // When any checkbox or duration input changes, update validation indicator live
+    document.body.addEventListener("change", e => {
+      if (
+        e.target.matches("input[type=checkbox]") ||
+        e.target.matches("input.duration")
+      ) {
+        updateValidationIndicator();
+      }
+    });
+
+    buildUnitCheckboxes();
+
+    // Initial validation on load (core units are pre-selected)
+    updateValidationIndicator();
+  </script>
+</body>
+</html>
