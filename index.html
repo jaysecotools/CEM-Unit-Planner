@@ -51,7 +51,10 @@
 
     <div id="validationIndicator" class="invalid">Please select units according to packaging rules.</div>
 
-    <h2>2. Schedule Options</h2>
+    <h2>2. Student Details</h2>
+    <label>Student Name: <input type="text" id="studentName" required /></label><br /><br />
+    
+    <h2>3. Schedule Options</h2>
     <label>Course Start Date: <input type="date" id="startDate" required /></label><br /><br />
     <button type="submit">Generate Schedule</button>
   </form>
@@ -69,43 +72,61 @@
   <script>
     window.jsPDF = window.jspdf.jsPDF;
 
-function exportToCSV() {
-  const table = document.querySelector("#results table");
-  if (!table) return alert("No schedule to export");
-  let csv = "";
-  table.querySelectorAll("tr").forEach(row => {
-    const cells = Array.from(row.querySelectorAll("th,td")).map(cell => '"' + cell.textContent.trim().replace(/"/g, '""') + '"');
-    csv += cells.join(",") + "\n";
-  });
+    function exportToCSV() {
+      const table = document.querySelector("#results table");
+      const studentName = document.getElementById("studentName").value || "Unknown Student";
+      if (!table) return alert("No schedule to export");
+      
+      let csv = `Student Name,${studentName}\n`;
+      csv += `Generated,${new Date().toLocaleDateString()}\n\n`;
+      
+      table.querySelectorAll("tr").forEach(row => {
+        const cells = Array.from(row.querySelectorAll("th,td")).map(cell => '"' + cell.textContent.trim().replace(/"/g, '""') + '"');
+        csv += cells.join(",") + "\n";
+      });
 
-  const filename = prompt("Enter a name for your CSV file:", "schedule") || "schedule";
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${filename}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-}
+      const filename = prompt("Enter a name for your CSV file:", `schedule_${studentName.replace(/[^a-z0-9]/gi, '_')}`) || "schedule";
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${filename}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
 
-function exportToPDF() {
-  const table = document.querySelector("#results table");
-  if (!table) return alert("No schedule to export");
+    function exportToPDF() {
+      const table = document.querySelector("#results table");
+      const studentName = document.getElementById("studentName").value || "Unknown Student";
+      if (!table) return alert("No schedule to export");
 
-  const filename = prompt("Enter a name for your PDF file:", "schedule") || "schedule";
-  const doc = new jsPDF();
-  doc.text("CIII CEM Schedule", 14, 16);
+      const filename = prompt("Enter a name for your PDF file:", `schedule_${studentName.replace(/[^a-z0-9]/gi, '_')}`) || "schedule";
+      const doc = new jsPDF();
+      
+      // Add student name and generation date
+      doc.setFontSize(16);
+      doc.text(`CIII CEM Schedule - ${studentName}`, 14, 16);
+      doc.setFontSize(10);
+      doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 24);
 
-  const rows = [];
-  table.querySelectorAll("tr").forEach(row => {
-    const rowData = Array.from(row.querySelectorAll("th,td")).map(cell => cell.textContent.trim());
-    rows.push(rowData);
-  });
+      const rows = [];
+      table.querySelectorAll("tr").forEach(row => {
+        const rowData = Array.from(row.querySelectorAll("th,td")).map(cell => cell.textContent.trim());
+        rows.push(rowData);
+      });
 
-  doc.autoTable({ head: [rows[0]], body: rows.slice(1), startY: 20 });
-  doc.save(`${filename}.pdf`);
-}
+      doc.autoTable({ 
+        head: [rows[0]], 
+        body: rows.slice(1), 
+        startY: 30,
+        headStyles: {
+          fillColor: [64, 64, 64]
+        }
+      });
+      
+      doc.save(`${filename}.pdf`);
+    }
 
     const coreUnits = [
       { code: "AHCECR309", name: "Conduct an ecological and cultural site inspection prior to works", duration: 6 },
@@ -241,19 +262,18 @@ function exportToPDF() {
         return;
       }
 
-      // Convert input start date string (YYYY-MM-DD) to Date object
+      const studentName = document.getElementById("studentName").value || "Student";
       const [year, month, day] = startDate.split("-");
       const start = new Date(year, month - 1, day);
-
-      // Parse the end date from the final scheduled unit (format: DD/MM/YYYY)
       const endParts = schedule.at(-1).endDate.split("/");
       const end = new Date(endParts[2], endParts[1] - 1, endParts[0]);
-
-      // Calculate duration in weeks
       const weeks = Math.round((end - start) / (1000 * 60 * 60 * 24 * 7));
 
-      // Generate schedule output
-      let out = `<h2>📅 Schedule</h2><p><strong>Actual Duration:</strong> ${weeks} weeks (${formatDate(start)} to ${formatDate(end)})</p>`;
+      let out = `
+        <h2>📅 Schedule for ${studentName}</h2>
+        <p><strong>Actual Duration:</strong> ${weeks} weeks (${formatDate(start)} to ${formatDate(end)})</p>
+      `;
+      
       if (weeks > 100) out += `<p style="color:red">⚠ Course exceeds the 100-week target window.</p>`;
 
       out += `<table><tr><th>Code</th><th>Name</th><th>Start</th><th>End</th></tr>`;
@@ -283,9 +303,13 @@ function exportToPDF() {
 
     document.getElementById("unitForm").addEventListener("submit", e => {
       e.preventDefault();
+      const studentName = document.getElementById("studentName").value;
+      if (!studentName) return alert("Please enter a student name");
+      
       const selected = getSelectedUnits();
       const errors = validate(selected);
       if (errors.length) return alert(errors.join("\n"));
+      
       const startDate = document.getElementById("startDate").value;
       const schedule = generateSchedule(selected, startDate);
       renderSchedule(schedule, startDate);
