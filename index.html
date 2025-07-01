@@ -166,11 +166,14 @@
       doc.text(`Student ID: ${studentId}`, 14, 24);
       doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 32);
 
+      let startY = 40; // Default start position for table
+      
       // Add notes if they exist
       if (notes) {
         doc.text("Notes:", 14, 40);
         const splitNotes = doc.splitTextToSize(notes, 180);
         doc.text(splitNotes, 14, 48);
+        startY = 48 + (splitNotes.length * 6); // Adjust start position based on notes height
       }
 
       const rows = [];
@@ -179,15 +182,14 @@
         rows.push(rowData);
       });
 
-      const startY = notes ? 48 + (splitNotes.length * 6) : 40;
-      
       doc.autoTable({ 
         head: [rows[0]], 
         body: rows.slice(1), 
         startY: startY,
         headStyles: {
           fillColor: [64, 64, 64]
-        }
+        },
+        margin: { top: startY }
       });
       
       doc.save(`${filename}.pdf`);
