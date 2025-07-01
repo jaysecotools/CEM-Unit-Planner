@@ -34,6 +34,16 @@
     .export-buttons button {
       margin-right: 10px;
     }
+    .other-unit {
+      margin-top: 10px;
+      padding: 10px;
+      background: #f0f0f0;
+      border-radius: 4px;
+    }
+    .other-unit input[type="text"] {
+      width: 300px;
+      margin-left: 5px;
+    }
   </style>
 </head>
 <body>
@@ -164,6 +174,7 @@
     ];
 
     function buildUnitCheckboxes() {
+      // Core units
       coreUnits.forEach(unit => {
         const div = document.createElement("div");
         div.innerHTML = `
@@ -175,6 +186,7 @@
         document.getElementById("core-units").appendChild(div);
       });
 
+      // Elective units
       electiveUnits.forEach(unit => {
         unit.groups.forEach(group => {
           const div = document.createElement("div");
@@ -187,21 +199,53 @@
           document.getElementById(group).appendChild(div);
         });
       });
+
+      // Add "Other" option to imported units
+      const importedDiv = document.getElementById("imported");
+      const otherDiv = document.createElement("div");
+      otherDiv.className = "other-unit";
+      otherDiv.innerHTML = `
+        <label>
+          <input type="checkbox" id="otherUnitCheckbox">
+          Other (specify):
+          <input type="text" id="otherUnitDetails" placeholder="Unit code and name">
+          &nbsp; Duration (weeks): <input type="number" min="1" value="6" class="duration" id="otherUnitDuration">
+        </label>
+      `;
+      importedDiv.appendChild(otherDiv);
     }
 
     function getSelectedUnits() {
       const selected = [];
 
-      document.querySelectorAll("input[type=checkbox]").forEach(cb => {
+      // Standard units
+      document.querySelectorAll("input[type=checkbox]:not(#otherUnitCheckbox)").forEach(cb => {
         if (cb.checked) {
           const code = cb.dataset.code;
           const name = cb.dataset.name;
-          const groups = cb.dataset.groups ? cb.dataset.groups.split(",") : ["core"];
+          const allGroups = cb.dataset.groups ? cb.dataset.groups.split(",") : ["core"];
+          const selectedGroup = cb.closest('.unit-group').id;
           const durationInput = document.querySelector(`input.duration[data-unit="${code}"]`);
           const duration = parseInt(durationInput?.value || 6);
-          selected.push({ code, name, groups, duration });
+          selected.push({ code, name, allGroups, selectedGroup, duration });
         }
       });
+
+      // Other unit
+      const otherCheckbox = document.getElementById("otherUnitCheckbox");
+      if (otherCheckbox.checked) {
+        const details = document.getElementById("otherUnitDetails").value.trim();
+        if (details) {
+          const duration = parseInt(document.getElementById("otherUnitDuration").value || 6);
+          selected.push({
+            code: details.split(" ")[0] || "OTHER",
+            name: details,
+            allGroups: ["imported"],
+            selectedGroup: "imported",
+            duration
+          });
+        }
+      }
 
       return selected;
     }
@@ -240,15 +284,15 @@
     function validate(selected) {
       const groupCounts = { core: 0, groupI: 0, imported: 0, AtoH: 0 };
       selected.forEach(u => {
-        if (u.groups.includes("core")) groupCounts.core++;
-        if (u.groups.includes("groupI")) groupCounts.groupI++;
-        if (u.groups.includes("imported")) groupCounts.imported++;
-        if (u.groups.some(g => ["groupB", "groupC", "groupD", "groupG"].includes(g))) groupCounts.AtoH++;
+        if (u.selectedGroup === "core-units") groupCounts.core++;
+        if (u.selectedGroup === "groupI") groupCounts.groupI++;
+        if (u.selectedGroup === "imported") groupCounts.imported++;
+        if (["groupB", "groupC", "groupD", "groupG"].includes(u.selectedGroup)) groupCounts.AtoH++;
       });
 
       const errors = [];
       if (groupCounts.core !== 2) errors.push("You must include exactly 2 core units.");
-      if (groupCounts.AtoH < 6) errors.push("At least 6 units must be from Groups A–H.");
+      if (groupCounts.AtoH < 6) errors.push("At least 6 units must be from Groups A-H.");
       if (groupCounts.groupI > 6) errors.push("Max 6 electives from Group I.");
       if (groupCounts.imported > 4) errors.push("Max 4 imported electives.");
       if (selected.length !== 16) errors.push("Exactly 16 units must be selected.");
@@ -319,7 +363,8 @@
     document.body.addEventListener("change", e => {
       if (
         e.target.matches("input[type=checkbox]") ||
-        e.target.matches("input.duration")
+        e.target.matches("input.duration") ||
+        e.target.matches("#otherUnitDetails")
       ) {
         updateValidationIndicator();
       }
