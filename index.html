@@ -34,15 +34,49 @@
     .export-buttons button {
       margin-right: 10px;
     }
+    .other-unit-container {
+      margin-top: 15px;
+    }
     .other-unit {
-      margin-top: 10px;
+      margin-bottom: 10px;
       padding: 10px;
       background: #f0f0f0;
       border-radius: 4px;
+      position: relative;
     }
     .other-unit input[type="text"] {
       width: 300px;
       margin-left: 5px;
+    }
+    .remove-other-unit {
+      position: absolute;
+      right: 10px;
+      top: 10px;
+      background: #ff6b6b;
+      color: white;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+    .add-other-unit {
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 5px 10px;
+      border-radius: 3px;
+      cursor: pointer;
+      margin-top: 5px;
+    }
+    .notes-section {
+      margin-top: 15px;
+    }
+    .notes-section textarea {
+      width: 100%;
+      min-height: 80px;
+      padding: 8px;
+      box-sizing: border-box;
+      border: 1px solid #ddd;
+      border-radius: 4px;
     }
   </style>
 </head>
@@ -63,7 +97,13 @@
 
     <h2>2. Student Details</h2>
     <label>Student Name: <input type="text" id="studentName" required /></label><br /><br />
+    <label>Student ID: <input type="text" id="studentId" /></label><br /><br />
     
+    <div class="notes-section">
+      <label>Notes/Manual Entries:</label>
+      <textarea id="notes" placeholder="Add any additional notes or manual entries here..."></textarea>
+    </div>
+
     <h2>3. Schedule Options</h2>
     <label>Course Start Date: <input type="date" id="startDate" required /></label><br /><br />
     <button type="submit">Generate Schedule</button>
@@ -85,10 +125,13 @@
     function exportToCSV() {
       const table = document.querySelector("#results table");
       const studentName = document.getElementById("studentName").value || "Unknown Student";
+      const notes = document.getElementById("notes").value;
       if (!table) return alert("No schedule to export");
       
       let csv = `Student Name,${studentName}\n`;
-      csv += `Generated,${new Date().toLocaleDateString()}\n\n`;
+      csv += `Student ID,${document.getElementById("studentId").value || ''}\n`;
+      csv += `Generated,${new Date().toLocaleDateString()}\n`;
+      csv += `Notes,"${notes.replace(/"/g, '""')}"\n\n`;
       
       table.querySelectorAll("tr").forEach(row => {
         const cells = Array.from(row.querySelectorAll("th,td")).map(cell => '"' + cell.textContent.trim().replace(/"/g, '""') + '"');
@@ -109,16 +152,26 @@
     function exportToPDF() {
       const table = document.querySelector("#results table");
       const studentName = document.getElementById("studentName").value || "Unknown Student";
+      const studentId = document.getElementById("studentId").value || "";
+      const notes = document.getElementById("notes").value;
       if (!table) return alert("No schedule to export");
 
       const filename = prompt("Enter a name for your PDF file:", `schedule_${studentName.replace(/[^a-z0-9]/gi, '_')}`) || "schedule";
       const doc = new jsPDF();
       
-      // Add student name and generation date
+      // Add student info and generation date
       doc.setFontSize(16);
       doc.text(`CIII CEM Schedule - ${studentName}`, 14, 16);
       doc.setFontSize(10);
-      doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 24);
+      doc.text(`Student ID: ${studentId}`, 14, 24);
+      doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 32);
+
+      // Add notes if they exist
+      if (notes) {
+        doc.text("Notes:", 14, 40);
+        const splitNotes = doc.splitTextToSize(notes, 180);
+        doc.text(splitNotes, 14, 48);
+      }
 
       const rows = [];
       table.querySelectorAll("tr").forEach(row => {
@@ -126,10 +179,12 @@
         rows.push(rowData);
       });
 
+      const startY = notes ? 48 + (splitNotes.length * 6) : 40;
+      
       doc.autoTable({ 
         head: [rows[0]], 
         body: rows.slice(1), 
-        startY: 30,
+        startY: startY,
         headStyles: {
           fillColor: [64, 64, 64]
         }
@@ -200,26 +255,49 @@
         });
       });
 
-      // Add "Other" option to imported units
+      // Add "Other" imported units section
       const importedDiv = document.getElementById("imported");
-      const otherDiv = document.createElement("div");
-      otherDiv.className = "other-unit";
-      otherDiv.innerHTML = `
-        <label>
-          <input type="checkbox" id="otherUnitCheckbox">
-          Other (specify):
-          <input type="text" id="otherUnitDetails" placeholder="Unit code and name">
-          &nbsp; Duration (weeks): <input type="number" min="1" value="6" class="duration" id="otherUnitDuration">
-        </label>
+      const otherContainer = document.createElement("div");
+      otherContainer.className = "other-unit-container";
+      otherContainer.innerHTML = `
+        <button class="add-other-unit" onclick="addOtherUnit()">+ Add Other Imported Unit</button>
+        <div id="otherUnitsList"></div>
       `;
-      importedDiv.appendChild(otherDiv);
+      importedDiv.appendChild(otherContainer);
+    }
+
+    function addOtherUnit() {
+      const otherUnitsList = document.getElementById("otherUnitsList");
+      const newId = Date.now(); // Unique ID for this unit
+      
+      const otherUnitDiv = document.createElement("div");
+      otherUnitDiv.className = "other-unit";
+      otherUnitDiv.innerHTML = `
+        <label>
+          <input type="checkbox" id="otherUnitCheckbox-${newId}" checked>
+          Other Unit:
+          <input type="text" id="otherUnitDetails-${newId}" placeholder="Unit code and name" required>
+          &nbsp; Duration (weeks): <input type="number" min="1" value="6" class="duration" id="otherUnitDuration-${newId}">
+        </label>
+        <button class="remove-other-unit" onclick="removeOtherUnit(${newId})">×</button>
+      `;
+      otherUnitsList.appendChild(otherUnitDiv);
+      
+      // Update validation when adding a new unit
+      updateValidationIndicator();
+    }
+
+    function removeOtherUnit(id) {
+      const unitToRemove = document.querySelector(`#otherUnitCheckbox-${id}`).closest('.other-unit');
+      unitToRemove.remove();
+      updateValidationIndicator();
     }
 
     function getSelectedUnits() {
       const selected = [];
 
       // Standard units
-      document.querySelectorAll("input[type=checkbox]:not(#otherUnitCheckbox)").forEach(cb => {
+      document.querySelectorAll("input[type=checkbox]:not([id^='otherUnitCheckbox-'])").forEach(cb => {
         if (cb.checked) {
           const code = cb.dataset.code;
           const name = cb.dataset.name;
@@ -231,21 +309,23 @@
         }
       });
 
-      // Other unit
-      const otherCheckbox = document.getElementById("otherUnitCheckbox");
-      if (otherCheckbox.checked) {
-        const details = document.getElementById("otherUnitDetails").value.trim();
-        if (details) {
-          const duration = parseInt(document.getElementById("otherUnitDuration").value || 6);
-          selected.push({
-            code: details.split(" ")[0] || "OTHER",
-            name: details,
-            allGroups: ["imported"],
-            selectedGroup: "imported",
-            duration
-          });
+      // Other units
+      document.querySelectorAll("[id^='otherUnitCheckbox-']").forEach(cb => {
+        if (cb.checked) {
+          const id = cb.id.split("-")[1];
+          const details = document.getElementById(`otherUnitDetails-${id}`).value.trim();
+          if (details) {
+            const duration = parseInt(document.getElementById(`otherUnitDuration-${id}`).value || 6);
+            selected.push({
+              code: details.split(" ")[0] || "OTHER",
+              name: details,
+              allGroups: ["imported"],
+              selectedGroup: "imported",
+              duration
+            });
+          }
         }
-      }
+      });
 
       return selected;
     }
@@ -307,6 +387,8 @@
       }
 
       const studentName = document.getElementById("studentName").value || "Student";
+      const studentId = document.getElementById("studentId").value || "";
+      const notes = document.getElementById("notes").value;
       const [year, month, day] = startDate.split("-");
       const start = new Date(year, month - 1, day);
       const endParts = schedule.at(-1).endDate.split("/");
@@ -315,10 +397,15 @@
 
       let out = `
         <h2>📅 Schedule for ${studentName}</h2>
+        ${studentId ? `<p><strong>Student ID:</strong> ${studentId}</p>` : ''}
         <p><strong>Actual Duration:</strong> ${weeks} weeks (${formatDate(start)} to ${formatDate(end)})</p>
       `;
       
       if (weeks > 100) out += `<p style="color:red">⚠ Course exceeds the 100-week target window.</p>`;
+      
+      if (notes) {
+        out += `<div class="notes-output"><strong>Notes:</strong><p>${notes.replace(/\n/g, '<br>')}</p></div>`;
+      }
 
       out += `<table><tr><th>Code</th><th>Name</th><th>Start</th><th>End</th></tr>`;
       schedule.forEach(u => {
@@ -350,6 +437,19 @@
       const studentName = document.getElementById("studentName").value;
       if (!studentName) return alert("Please enter a student name");
       
+      // Validate other units have details
+      let otherUnitsValid = true;
+      document.querySelectorAll("[id^='otherUnitCheckbox-']").forEach(cb => {
+        if (cb.checked) {
+          const id = cb.id.split("-")[1];
+          if (!document.getElementById(`otherUnitDetails-${id}`).value.trim()) {
+            otherUnitsValid = false;
+          }
+        }
+      });
+      
+      if (!otherUnitsValid) return alert("Please provide details for all 'Other' units");
+      
       const selected = getSelectedUnits();
       const errors = validate(selected);
       if (errors.length) return alert(errors.join("\n"));
@@ -359,19 +459,21 @@
       renderSchedule(schedule, startDate);
     });
 
-    // When any checkbox or duration input changes, update validation indicator live
+    // When any checkbox, duration input, or other unit details change, update validation
     document.body.addEventListener("change", e => {
       if (
         e.target.matches("input[type=checkbox]") ||
         e.target.matches("input.duration") ||
-        e.target.matches("#otherUnitDetails")
+        e.target.matches("[id^='otherUnitDetails-']")
       ) {
         updateValidationIndicator();
       }
     });
 
+    // Initialize the form
     buildUnitCheckboxes();
-
+    // Add one "Other" unit by default
+    addOtherUnit();
     // Initial validation on load (core units are pre-selected)
     updateValidationIndicator();
   </script>
