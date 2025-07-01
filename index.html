@@ -34,6 +34,20 @@
     .export-buttons button {
       margin-right: 10px;
     }
+    .unit-number {
+      width: 30px;
+      display: inline-block;
+      text-align: center;
+      margin-right: 5px;
+    }
+    #filename {
+      padding: 5px;
+      margin-left: 10px;
+      width: 300px;
+    }
+    .term-break {
+      background-color: #f0f0f0;
+    }
   </style>
 </head>
 <body>
@@ -60,6 +74,7 @@
         <option value="4" selected>4 weeks</option>
       </select>
     </label><br /><br />
+    <label>Filename: <input type="text" id="filename" placeholder="Enter filename (without extension)" value="CIII_CEM_Schedule"></label><br /><br />
     <button type="submit">Generate Schedule</button>
   </form>
 
@@ -79,6 +94,7 @@
     function exportToCSV() {
       const table = document.querySelector("#results table");
       if (!table) return alert("No schedule to export");
+      const filename = document.getElementById("filename").value || "schedule";
       let csv = "";
       table.querySelectorAll("tr").forEach(row => {
         const cells = Array.from(row.querySelectorAll("th,td")).map(cell => '"' + cell.textContent.trim().replace(/"/g, '""') + '"');
@@ -88,7 +104,7 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "schedule.csv";
+      a.download = filename + ".csv";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -97,6 +113,7 @@
     function exportToPDF() {
       const table = document.querySelector("#results table");
       if (!table) return alert("No schedule to export");
+      const filename = document.getElementById("filename").value || "schedule";
       const doc = new jsPDF();
       doc.text("CIII CEM Schedule", 14, 16);
       const rows = [];
@@ -105,7 +122,7 @@
         rows.push(rowData);
       });
       doc.autoTable({ head: [rows[0]], body: rows.slice(1), startY: 20 });
-      doc.save("schedule.pdf");
+      doc.save(filename + ".pdf");
     }
 
     const coreUnits = [
@@ -148,6 +165,7 @@
         const div = document.createElement("div");
         div.innerHTML = `
           <label>
+            <span class="unit-number">1</span>
             <input type="checkbox" value="${unit.code}" data-code="${unit.code}" data-name="${unit.name}" data-groups="core" checked disabled>
             ${unit.code} – ${unit.name}
             &nbsp; Duration (weeks): <input type="number" min="1" value="${unit.duration}" class="duration" data-unit="${unit.code}">
@@ -160,6 +178,7 @@
           const div = document.createElement("div");
           div.innerHTML = `
             <label>
+              <span class="unit-number"></span>
               <input type="checkbox" data-code="${unit.code}" data-name="${unit.name}" data-groups="${unit.groups.join(',')}" value="${unit.code}">
               ${unit.code} – ${unit.name} ${unit.groups.length > 1 ? `(Groups: ${unit.groups.map(g => g.replace("group", "").toUpperCase()).join(", ")})` : ""}
               &nbsp; Duration (weeks): <input type="number" min="1" value="${unit.duration}" class="duration" data-unit="${unit.code}">
@@ -171,6 +190,7 @@
 
     function getSelectedUnits() {
       const selected = [];
+      let unitNumber = 1;
 
       document.querySelectorAll("input[type=checkbox]").forEach(cb => {
         if (cb.checked) {
@@ -179,7 +199,23 @@
           const groups = cb.dataset.groups ? cb.dataset.groups.split(",") : ["core"];
           const durationInput = document.querySelector(`input.duration[data-unit="${code}"]`);
           const duration = parseInt(durationInput?.value || 4);
-          selected.push({ code, name, groups, duration });
+          
+          // Get or set the unit number
+          const unitNumberSpan = cb.parentElement.querySelector('.unit-number');
+          if (unitNumberSpan.textContent) {
+            unitNumber = parseInt(unitNumberSpan.textContent);
+          } else {
+            unitNumberSpan.textContent = unitNumber;
+          }
+          
+          selected.push({ 
+            code, 
+            name, 
+            groups, 
+            duration,
+            number: unitNumber
+          });
+          unitNumber++;
         }
       });
 
@@ -189,24 +225,89 @@
     function generateSchedule(units, startDate, bufferWeeks) {
       const schedule = [];
       let current = new Date(startDate);
-      const spacing = 3;  // This stays as is, but you might want to revisit if you want spacing = duration + buffer
-
+      
+      // Sort units by their assigned numbers
+      units.sort((a, b) => a.number - b.number);
+      
+      // Calculate term breaks (4 terms per year, 2 units per term)
+      const termBreaks = [];
+      for (let year = 0; year < 2; year++) {
+        for (let term = 0; term < 4; term++) {
+          if (year === 0 && term === 0) continue; // Skip first term of first year
+          const breakDate = new Date(startDate);
+          breakDate.setMonth(breakDate.getMonth() + (year * 12) + (term * 3));
+          termBreaks.push(new Date(breakDate));
+        }
+      }
+      
+      let termIndex = 0;
+      let unitsThisTerm = 0;
+      
       for (let u of units) {
         const start = new Date(current);
         const end = new Date(start);
         end.setDate(end.getDate() + (u.duration * 7) - 1);
         const bufferEnd = new Date(end);
         bufferEnd.setDate(bufferEnd.getDate() + bufferWeeks * 7);
-        schedule.push({ ...u, startDate: formatDate(start), endDate: formatDate(end), bufferEndDate: formatDate(bufferEnd) });
+        
+        // Check if we need to insert a term break
+        while (termIndex < termBreaks.length && termBreaks[termIndex] < start) {
+          const breakStart = new Date(termBreaks[termIndex]);
+          const breakEnd = new Date(breakStart);
+          breakEnd.setDate(breakEnd.getDate() + 14); // 2-week term break
+          
+          schedule.push({
+            code: "TERM BREAK",
+            name: `Term ${Math.floor(termIndex/2) + 1} Break`,
+            startDate: formatDate(breakStart),
+            endDate: formatDate(breakEnd),
+            bufferEndDate: "",
+            isBreak: true
+          });
+          
+          current = new Date(breakEnd);
+          termIndex++;
+          unitsThisTerm = 0;
+        }
+        
+        schedule.push({ 
+          ...u, 
+          startDate: formatDate(start), 
+          endDate: formatDate(end), 
+          bufferEndDate: formatDate(bufferEnd),
+          isBreak: false
+        });
 
-        // Update current date for next unit: Instead of fixed spacing (3 weeks), consider unit duration + buffer
+        // Update current date for next unit
         current.setDate(bufferEnd.getDate() + 1);
+        unitsThisTerm++;
+        
+        // If we've completed 2 units in this term, move to next term
+        if (unitsThisTerm >= 2 && termIndex < termBreaks.length) {
+          const breakStart = new Date(termBreaks[termIndex]);
+          const breakEnd = new Date(breakStart);
+          breakEnd.setDate(breakEnd.getDate() + 14); // 2-week term break
+          
+          schedule.push({
+            code: "TERM BREAK",
+            name: `Term ${Math.floor(termIndex/2) + 1} Break`,
+            startDate: formatDate(breakStart),
+            endDate: formatDate(breakEnd),
+            bufferEndDate: "",
+            isBreak: true
+          });
+          
+          current = new Date(breakEnd);
+          termIndex++;
+          unitsThisTerm = 0;
+        }
       }
       return schedule;
     }
 
     // Format Date DD/MM/YYYY
     function formatDate(d) {
+      if (typeof d === 'string') return d;
       const day = String(d.getDate()).padStart(2, "0");
       const month = String(d.getMonth() + 1).padStart(2, "0");
       const year = d.getFullYear();
@@ -233,17 +334,33 @@
     }
 
     function renderSchedule(schedule, startDate) {
-      const end = new Date(schedule.at(-1).bufferEndDate.split('/').reverse().join('-')); // convert DD/MM/YYYY to Date object
+      const end = new Date(schedule.at(-1).isBreak ? 
+        new Date(schedule.at(-1).endDate.split('/').reverse().join('-')) : 
+        new Date(schedule.at(-1).bufferEndDate.split('/').reverse().join('-')); // convert DD/MM/YYYY to Date object
       const startParts = startDate.split("-");
       const start = new Date(startParts[0], startParts[1] - 1, startParts[2]);
 
       const weeks = Math.round((end - start) / (1000 * 60 * 60 * 24 * 7));
       let out = `<h2>📅 Schedule</h2><p><strong>Duration:</strong> ${weeks} weeks (${formatDate(start)} to ${formatDate(end)})</p>`;
       if (weeks > 100) out += `<p style="color:red">⚠ Course exceeds 100 weeks (last 4 weeks reserved).</p>`;
-      out += `<table><tr><th>Code</th><th>Name</th><th>Start</th><th>End</th><th>Buffer Ends</th></tr>`;
-      schedule.forEach(u => out += `<tr><td>${u.code}</td><td>${u.name}</td><td>${u.startDate}</td><td>${u.endDate}</td><td>${u.bufferEndDate}</td></tr>`);
+      out += `<table><tr><th>#</th><th>Code</th><th>Name</th><th>Start</th><th>End</th><th>Buffer Ends</th></tr>`;
+      
+      let unitCount = 1;
+      schedule.forEach(u => {
+        if (u.isBreak) {
+          out += `<tr class="term-break"><td></td><td>${u.code}</td><td>${u.name}</td><td>${u.startDate}</td><td>${u.endDate}</td><td>${u.bufferEndDate}</td></tr>`;
+        } else {
+          out += `<tr><td>${unitCount++}</td><td>${u.code}</td><td>${u.name}</td><td>${u.startDate}</td><td>${u.endDate}</td><td>${u.bufferEndDate}</td></tr>`;
+        }
+      });
       out += `</table>`;
       document.getElementById("results").innerHTML = out;
+      
+      // Make unit numbers editable
+      document.querySelectorAll('.unit-number').forEach((span, index) => {
+        span.contentEditable = true;
+        span.addEventListener('blur', updateValidationIndicator);
+      });
     }
 
     // Update validation indicator (called on checkbox or duration change)
