@@ -28,6 +28,11 @@
       background-color: #f8d7da;
       border: 1px solid #f5c6cb;
     }
+    #validationIndicator.override {
+      color: #856404;
+      background-color: #fff3cd;
+      border: 1px solid #ffeeba;
+    }
     .export-buttons {
       margin-top: 1em;
     }
@@ -66,6 +71,7 @@
       border-radius: 3px;
       cursor: pointer;
       margin-top: 5px;
+      margin-right: 5px;
     }
     .notes-section {
       margin-top: 15px;
@@ -78,22 +84,51 @@
       border: 1px solid #ddd;
       border-radius: 4px;
     }
+    .packaging-rules {
+      background: #e8f4fc; 
+      padding: 15px; 
+      margin-bottom: 20px; 
+      border-radius: 5px; 
+      border-left: 4px solid #2196F3;
+    }
+    .override-warning {
+      margin: 15px 0; 
+      padding: 10px; 
+      background: #fff8e1; 
+      border-left: 4px solid #ffc107;
+    }
+    .override-warning p {
+      font-size: 0.9em; 
+      margin: 5px 0 0 25px; 
+      color: #795548;
+    }
   </style>
 </head>
 <body>
-<h1>CIII Conservation & Ecosystem Management – Unit Planner</h1>
+  <h1>CIII Conservation & Ecosystem Management – Unit Planner</h1>
 
-<div style="background: #e8f4fc; padding: 15px; margin-bottom: 20px; border-radius: 5px; border-left: 4px solid #2196F3;">
-  <h3 style="margin-top: 0;">Packaging Rules Summary</h3>
-  <ul style="margin-bottom: 0;">
-    <li><strong>Total Units:</strong> 16 units must be selected</li>
-    <li><strong>Core Units:</strong> All 2 core units are required</li>
-    <li><strong>Groups A-H:</strong> At least 6 units must be from Groups B, C, D, or G</li>
-    <li><strong>Group I:</strong> Maximum 6 electives from Group I</li>
-    <li><strong>Imported Units:</strong> Maximum 4 imported electives</li>
-  </ul>
-</div>
-  
+  <div class="packaging-rules">
+    <h3 style="margin-top: 0;">Packaging Rules Summary</h3>
+    <ul style="margin-bottom: 0;">
+      <li><strong>Total Units:</strong> 16 units must be selected</li>
+      <li><strong>Core Units:</strong> All 2 core units are required</li>
+      <li><strong>Groups A-H:</strong> At least 6 units must be from Groups B, C, D, or G</li>
+      <li><strong>Group I:</strong> Maximum 6 electives from Group I</li>
+      <li><strong>Imported Units:</strong> Maximum 4 imported electives</li>
+    </ul>
+  </div>
+
+  <div class="override-warning">
+    <label>
+      <input type="checkbox" id="overrideRules"> 
+      Override packaging rules (for special cases only)
+    </label>
+    <p>
+      Warning: Only use this if student has previously completed units elsewhere.
+      Qualification may not meet standards if rules aren't followed.
+    </p>
+  </div>
+
   <form id="unitForm">
     <h2>1. Select Units</h2>
     <div class="unit-group" id="core-units"><span class="group-label">Core Units (Select all 2)</span></div>
@@ -273,25 +308,34 @@
       const otherContainer = document.createElement("div");
       otherContainer.className = "other-unit-container";
       otherContainer.innerHTML = `
-        <button class="add-other-unit" onclick="addOtherUnit()">+ Add Other Imported Unit</button>
+        <button class="add-other-unit" onclick="addOtherUnit('AtoH')">+ Add Other Unit (Groups A-H)</button>
+        <button class="add-other-unit" onclick="addOtherUnit('groupI')">+ Add Other Unit (Group I)</button>
+        <button class="add-other-unit" onclick="addOtherUnit('imported')">+ Add Other Imported Unit</button>
         <div id="otherUnitsList"></div>
       `;
       importedDiv.appendChild(otherContainer);
     }
 
-    function addOtherUnit() {
+    function addOtherUnit(groupType) {
       const otherUnitsList = document.getElementById("otherUnitsList");
       const newId = Date.now(); // Unique ID for this unit
+      
+      const groupLabel = {
+        'AtoH': 'Groups A-H',
+        'groupI': 'Group I',
+        'imported': 'Imported'
+      }[groupType] || 'Custom';
       
       const otherUnitDiv = document.createElement("div");
       otherUnitDiv.className = "other-unit";
       otherUnitDiv.innerHTML = `
         <label>
           <input type="checkbox" id="otherUnitCheckbox-${newId}" checked>
-          Other Unit:
+          ${groupLabel} Unit:
           <input type="text" id="otherUnitDetails-${newId}" placeholder="Unit code and name" required>
           &nbsp; Duration (weeks): <input type="number" min="1" value="6" class="duration" id="otherUnitDuration-${newId}">
         </label>
+        <input type="hidden" id="otherUnitGroup-${newId}" value="${groupType}">
         <button class="remove-other-unit" onclick="removeOtherUnit(${newId})">×</button>
       `;
       otherUnitsList.appendChild(otherUnitDiv);
@@ -329,12 +373,20 @@
           const details = document.getElementById(`otherUnitDetails-${id}`).value.trim();
           if (details) {
             const duration = parseInt(document.getElementById(`otherUnitDuration-${id}`).value || 6);
+            const groupType = document.getElementById(`otherUnitGroup-${id}`).value;
+            
+            // Determine the proper group mapping
+            let selectedGroup = "imported";
+            if (groupType === "AtoH") selectedGroup = "groupB"; // Default to B for A-H
+            else if (groupType === "groupI") selectedGroup = "groupI";
+            
             selected.push({
               code: details.split(" ")[0] || "OTHER",
               name: details,
-              allGroups: ["imported"],
-              selectedGroup: "imported",
-              duration
+              allGroups: [groupType],
+              selectedGroup,
+              duration,
+              isCustom: true
             });
           }
         }
@@ -375,7 +427,9 @@
     }
 
     function validate(selected) {
+      const override = document.getElementById("overrideRules").checked;
       const groupCounts = { core: 0, groupI: 0, imported: 0, AtoH: 0 };
+      
       selected.forEach(u => {
         if (u.selectedGroup === "core-units") groupCounts.core++;
         if (u.selectedGroup === "groupI") groupCounts.groupI++;
@@ -384,11 +438,18 @@
       });
 
       const errors = [];
-      if (groupCounts.core !== 2) errors.push("You must include exactly 2 core units.");
-      if (groupCounts.AtoH < 6) errors.push("At least 6 units must be from Groups A-H.");
-      if (groupCounts.groupI > 6) errors.push("Max 6 electives from Group I.");
-      if (groupCounts.imported > 4) errors.push("Max 4 imported electives.");
-      if (selected.length !== 16) errors.push("Exactly 16 units must be selected.");
+      
+      if (selected.length !== 16) {
+        errors.push("Exactly 16 units must be selected.");
+      }
+      
+      if (!override) {
+        // Apply strict validation rules
+        if (groupCounts.core !== 2) errors.push("You must include exactly 2 core units.");
+        if (groupCounts.AtoH < 6) errors.push("At least 6 units must be from Groups A-H.");
+        if (groupCounts.groupI > 6) errors.push("Max 6 electives from Group I.");
+        if (groupCounts.imported > 4) errors.push("Max 4 imported electives.");
+      }
 
       return errors;
     }
@@ -402,6 +463,7 @@
       const studentName = document.getElementById("studentName").value || "Student";
       const studentId = document.getElementById("studentId").value || "";
       const notes = document.getElementById("notes").value;
+      const override = document.getElementById("overrideRules").checked;
       const [year, month, day] = startDate.split("-");
       const start = new Date(year, month - 1, day);
       const endParts = schedule.at(-1).endDate.split("/");
@@ -411,6 +473,7 @@
       let out = `
         <h2>📅 Schedule for ${studentName}</h2>
         ${studentId ? `<p><strong>Student ID:</strong> ${studentId}</p>` : ''}
+        ${override ? '<p style="color: #856404; background: #fff3cd; padding: 5px; border-radius: 4px;">⚠ PACKAGING RULES OVERRIDE ACTIVE</p>' : ''}
         <p><strong>Actual Duration:</strong> ${weeks} weeks (${formatDate(start)} to ${formatDate(end)})</p>
       `;
       
@@ -420,9 +483,18 @@
         out += `<div class="notes-output"><strong>Notes:</strong><p>${notes.replace(/\n/g, '<br>')}</p></div>`;
       }
 
-      out += `<table><tr><th>Code</th><th>Name</th><th>Start</th><th>End</th></tr>`;
+      out += `<table><tr><th>Code</th><th>Name</th><th>Group</th><th>Start</th><th>End</th></tr>`;
       schedule.forEach(u => {
-        out += `<tr><td>${u.code}</td><td>${u.name}</td><td>${u.startDate}</td><td>${u.endDate}</td></tr>`;
+        let group = '';
+        if (u.selectedGroup === "core-units") group = "Core";
+        else if (u.selectedGroup === "groupI") group = "I";
+        else if (["groupB", "groupC", "groupD", "groupG"].includes(u.selectedGroup)) {
+          group = u.selectedGroup.replace("group", "").toUpperCase();
+        } else if (u.selectedGroup === "imported") group = "Imported";
+        
+        if (u.isCustom) group += " (Custom)";
+        
+        out += `<tr><td>${u.code}</td><td>${u.name}</td><td>${group}</td><td>${u.startDate}</td><td>${u.endDate}</td></tr>`;
       });
       out += `</table>`;
 
@@ -433,15 +505,20 @@
     function updateValidationIndicator() {
       const selected = getSelectedUnits();
       const errors = validate(selected);
+      const override = document.getElementById("overrideRules").checked;
       const indicator = document.getElementById("validationIndicator");
+      
       if (errors.length === 0) {
-        indicator.textContent = "✅ Selection meets qualification packaging rules.";
-        indicator.classList.remove("invalid");
-        indicator.classList.add("valid");
+        if (override) {
+          indicator.textContent = "⚠ Override active - packaging rules not enforced";
+          indicator.className = "override";
+        } else {
+          indicator.textContent = "✅ Selection meets qualification packaging rules.";
+          indicator.className = "valid";
+        }
       } else {
         indicator.textContent = "❌ " + errors.join(" ");
-        indicator.classList.remove("valid");
-        indicator.classList.add("invalid");
+        indicator.className = "invalid";
       }
     }
 
@@ -477,7 +554,8 @@
       if (
         e.target.matches("input[type=checkbox]") ||
         e.target.matches("input.duration") ||
-        e.target.matches("[id^='otherUnitDetails-']")
+        e.target.matches("[id^='otherUnitDetails-']") ||
+        e.target.matches("#overrideRules")
       ) {
         updateValidationIndicator();
       }
@@ -485,8 +563,6 @@
 
     // Initialize the form
     buildUnitCheckboxes();
-    // Add one "Other" unit by default
-    addOtherUnit();
     // Initial validation on load (core units are pre-selected)
     updateValidationIndicator();
   </script>
