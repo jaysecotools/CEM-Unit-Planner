@@ -125,6 +125,9 @@
       font-weight: bold;
       margin-bottom: 5px;
     }
+    .duration-input {
+      display: inline;
+    }
   </style>
 </head>
 <body>
@@ -317,7 +320,9 @@
           <label>
             <input type="checkbox" value="${unit.code}" data-code="${unit.code}" data-name="${unit.name}" data-groups="core" checked disabled>
             ${unit.code} – ${unit.name}
-            &nbsp; Duration (weeks): <input type="number" min="1" value="${unit.duration}" class="duration" data-unit="${unit.code}">
+            <span class="duration-input">
+              &nbsp; Duration (weeks): <input type="number" min="1" value="${unit.duration}" class="duration" data-unit="${unit.code}">
+            </span>
             <span class="quarter-selector">
               Quarter: <select class="quarter-select" data-unit="${unit.code}">
                 <option value="1">1</option>
@@ -342,7 +347,9 @@
             <label>
               <input type="checkbox" data-code="${unit.code}" data-name="${unit.name}" data-groups="${unit.groups.join(',')}" value="${unit.code}">
               ${unit.code} – ${unit.name} ${unit.groups.length > 1 ? `(Groups: ${unit.groups.map(g => g.replace("group", "").toUpperCase()).join(", ")})` : ""}
-              &nbsp; Duration (weeks): <input type="number" min="1" value="${unit.duration}" class="duration" data-unit="${unit.code}">
+              <span class="duration-input">
+                &nbsp; Duration (weeks): <input type="number" min="1" value="${unit.duration}" class="duration" data-unit="${unit.code}">
+              </span>
               <span class="quarter-selector">
                 Quarter: <select class="quarter-select" data-unit="${unit.code}">
                   <option value="1">1</option>
@@ -393,7 +400,9 @@
           <input type="checkbox" id="otherUnitCheckbox-${newId}" checked>
           ${groupLabel} Unit:
           <input type="text" id="otherUnitDetails-${newId}" placeholder="Unit code and name" required>
-          &nbsp; Duration (weeks): <input type="number" min="1" value="6" class="duration" id="otherUnitDuration-${newId}">
+          <span class="duration-input">
+            &nbsp; Duration (weeks): <input type="number" min="1" value="6" class="duration" id="otherUnitDuration-${newId}">
+          </span>
           <span class="quarter-selector">
             Quarter: <select class="quarter-select" id="otherUnitQuarter-${newId}">
               <option value="1">1</option>
@@ -434,8 +443,13 @@
           const name = cb.dataset.name;
           const allGroups = cb.dataset.groups ? cb.dataset.groups.split(",") : ["core"];
           const selectedGroup = cb.closest('.unit-group').id;
-          const durationInput = document.querySelector(`input.duration[data-unit="${code}"]`);
-          const duration = parseInt(durationInput?.value || 6);
+          
+          // Get duration (fixed to 6 weeks in quarterly mode)
+          let duration = 6;
+          if (scheduleMode === 'weekly') {
+            const durationInput = document.querySelector(`input.duration[data-unit="${code}"]`);
+            duration = parseInt(durationInput?.value || 6);
+          }
           
           // Get quarter selection if in quarterly mode
           let quarter = null;
@@ -454,7 +468,12 @@
           const id = cb.id.split("-")[1];
           const details = document.getElementById(`otherUnitDetails-${id}`).value.trim();
           if (details) {
-            const duration = parseInt(document.getElementById(`otherUnitDuration-${id}`).value || 6);
+            // Get duration (fixed to 6 weeks in quarterly mode)
+            let duration = 6;
+            if (scheduleMode === 'weekly') {
+              duration = parseInt(document.getElementById(`otherUnitDuration-${id}`).value || 6);
+            }
+            
             const groupType = document.getElementById(`otherUnitGroup-${id}`).value;
             
             // Get quarter selection if in quarterly mode
@@ -535,17 +554,22 @@
         quarters[quarter].push(unit);
       });
       
-      // Generate dates for each quarter
-      const quarterDates = {
-        1: { start: new Date(year, 0, 1), end: new Date(year, 2, 31) },   // Q1: Jan-Mar
-        2: { start: new Date(year, 3, 1), end: new Date(year, 5, 30) },   // Q2: Apr-Jun
-        3: { start: new Date(year, 6, 1), end: new Date(year, 8, 30) },  // Q3: Jul-Sep
-        4: { start: new Date(year, 9, 1), end: new Date(year, 11, 31) }   // Q4: Oct-Dec
-      };
+      // Calculate quarter dates (each quarter is exactly 12 weeks)
+      const quarterDates = {};
+      let currentQuarterStart = new Date(start);
       
-      // Adjust Q1 start date to match course start date if it's in Q1
-      if (start.getMonth() <= 2) {
-        quarterDates[1].start = new Date(start);
+      for (let q = 1; q <= 4; q++) {
+        const quarterEnd = new Date(currentQuarterStart);
+        quarterEnd.setDate(quarterEnd.getDate() + (12 * 7) - 1); // 12 weeks later
+        
+        quarterDates[q] = {
+          start: new Date(currentQuarterStart),
+          end: new Date(quarterEnd)
+        };
+        
+        // Set next quarter start date (day after this quarter ends)
+        currentQuarterStart = new Date(quarterEnd);
+        currentQuarterStart.setDate(currentQuarterStart.getDate() + 1);
       }
       
       // For each quarter, assign dates to units
@@ -558,10 +582,9 @@
         
         // Calculate total duration of all units in this quarter
         const totalDuration = quarterUnits.reduce((sum, unit) => sum + unit.duration, 0);
-        const quarterWeeks = Math.ceil((quarterEnd - quarterStart) / (1000 * 60 * 60 * 24 * 7));
         
-        if (totalDuration > quarterWeeks) {
-          alert(`Warning: The units in Q${quarter} exceed the available weeks (${totalDuration} weeks needed, ${quarterWeeks} available).`);
+        if (totalDuration > 12) {
+          alert(`Warning: The units in Q${quarter} exceed the 12-week quarter (${totalDuration} weeks needed).`);
         }
         
         // Assign dates to each unit in this quarter
@@ -670,7 +693,7 @@
           
           out += `
             <div class="quarter-section">
-              <div class="quarter-header">Quarter ${quarter} (${quarterStart} to ${quarterEnd})</div>
+              <div class="quarter-header">Quarter ${quarter} (${quarterStart} to ${quarterEnd}) - 12 weeks</div>
               <table>
                 <tr><th>Code</th><th>Name</th><th>Group</th><th>Start</th><th>End</th><th>Weeks</th></tr>
           `;
@@ -749,11 +772,14 @@
     function updateQuarterSelectorsVisibility() {
       const scheduleMode = document.querySelector('input[name="scheduleMode"]:checked').value;
       const quarterSelectors = document.querySelectorAll('.quarter-selector');
+      const durationInputs = document.querySelectorAll('.duration-input');
       
       if (scheduleMode === 'quarterly') {
         quarterSelectors.forEach(el => el.style.display = 'inline');
+        durationInputs.forEach(el => el.style.display = 'none');
       } else {
         quarterSelectors.forEach(el => el.style.display = 'none');
+        durationInputs.forEach(el => el.style.display = 'inline');
       }
     }
 
