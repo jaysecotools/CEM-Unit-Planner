@@ -102,6 +102,29 @@
       margin: 5px 0 0 25px; 
       color: #795548;
     }
+    .quarter-selector {
+      margin-left: 10px;
+      display: none;
+    }
+    .quarter-selector select {
+      margin-left: 5px;
+    }
+    .schedule-mode-selector {
+      margin: 15px 0;
+      padding: 10px;
+      background: #f0f0f0;
+      border-radius: 4px;
+    }
+    .quarter-section {
+      background-color: #f8f9fa;
+      border-left: 4px solid #6c757d;
+      padding: 10px;
+      margin: 10px 0;
+    }
+    .quarter-header {
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
   </style>
 </head>
 <body>
@@ -131,6 +154,16 @@
 
   <form id="unitForm">
     <h2>1. Select Units</h2>
+    
+    <div class="schedule-mode-selector">
+      <label>
+        <input type="radio" name="scheduleMode" value="weekly" checked> Weekly Schedule (units run sequentially)
+      </label>
+      <label style="margin-left: 20px;">
+        <input type="radio" name="scheduleMode" value="quarterly"> Quarterly Schedule (units grouped by quarter)
+      </label>
+    </div>
+    
     <div class="unit-group" id="core-units"><span class="group-label">Core Units (Select all 2)</span></div>
     <div class="unit-group" id="groupB"><span class="group-label">Group B – Ecological Restoration</span></div>
     <div class="unit-group" id="groupC"><span class="group-label">Group C – Land, Parks & Wildlife</span></div>
@@ -285,6 +318,14 @@
             <input type="checkbox" value="${unit.code}" data-code="${unit.code}" data-name="${unit.name}" data-groups="core" checked disabled>
             ${unit.code} – ${unit.name}
             &nbsp; Duration (weeks): <input type="number" min="1" value="${unit.duration}" class="duration" data-unit="${unit.code}">
+            <span class="quarter-selector">
+              Quarter: <select class="quarter-select" data-unit="${unit.code}">
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+              </select>
+            </span>
           </label>`;
         document.getElementById("core-units").appendChild(div);
       });
@@ -298,6 +339,14 @@
               <input type="checkbox" data-code="${unit.code}" data-name="${unit.name}" data-groups="${unit.groups.join(',')}" value="${unit.code}">
               ${unit.code} – ${unit.name} ${unit.groups.length > 1 ? `(Groups: ${unit.groups.map(g => g.replace("group", "").toUpperCase()).join(", ")})` : ""}
               &nbsp; Duration (weeks): <input type="number" min="1" value="${unit.duration}" class="duration" data-unit="${unit.code}">
+              <span class="quarter-selector">
+                Quarter: <select class="quarter-select" data-unit="${unit.code}">
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                </select>
+              </span>
             </label>`;
           document.getElementById(group).appendChild(div);
         });
@@ -314,6 +363,9 @@
         <div id="otherUnitsList"></div>
       `;
       importedDiv.appendChild(otherContainer);
+      
+      // Initially hide quarter selectors if weekly mode is selected
+      updateQuarterSelectorsVisibility();
     }
 
     function addOtherUnit(groupType) {
@@ -334,6 +386,14 @@
           ${groupLabel} Unit:
           <input type="text" id="otherUnitDetails-${newId}" placeholder="Unit code and name" required>
           &nbsp; Duration (weeks): <input type="number" min="1" value="6" class="duration" id="otherUnitDuration-${newId}">
+          <span class="quarter-selector">
+            Quarter: <select class="quarter-select" id="otherUnitQuarter-${newId}">
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+            </select>
+          </span>
         </label>
         <input type="hidden" id="otherUnitGroup-${newId}" value="${groupType}">
         <button class="remove-other-unit" onclick="removeOtherUnit(${newId})">×</button>
@@ -342,6 +402,7 @@
       
       // Update validation when adding a new unit
       updateValidationIndicator();
+      updateQuarterSelectorsVisibility();
     }
 
     function removeOtherUnit(id) {
@@ -352,6 +413,7 @@
 
     function getSelectedUnits() {
       const selected = [];
+      const scheduleMode = document.querySelector('input[name="scheduleMode"]:checked').value;
 
       // Standard units
       document.querySelectorAll("input[type=checkbox]:not([id^='otherUnitCheckbox-'])").forEach(cb => {
@@ -362,7 +424,15 @@
           const selectedGroup = cb.closest('.unit-group').id;
           const durationInput = document.querySelector(`input.duration[data-unit="${code}"]`);
           const duration = parseInt(durationInput?.value || 6);
-          selected.push({ code, name, allGroups, selectedGroup, duration });
+          
+          // Get quarter selection if in quarterly mode
+          let quarter = null;
+          if (scheduleMode === 'quarterly') {
+            const quarterSelect = document.querySelector(`select.quarter-select[data-unit="${code}"]`);
+            quarter = quarterSelect ? parseInt(quarterSelect.value) : 1;
+          }
+          
+          selected.push({ code, name, allGroups, selectedGroup, duration, quarter });
         }
       });
 
@@ -375,6 +445,12 @@
             const duration = parseInt(document.getElementById(`otherUnitDuration-${id}`).value || 6);
             const groupType = document.getElementById(`otherUnitGroup-${id}`).value;
             
+            // Get quarter selection if in quarterly mode
+            let quarter = null;
+            if (scheduleMode === 'quarterly') {
+              quarter = parseInt(document.getElementById(`otherUnitQuarter-${id}`).value);
+            }
+            
             // Determine the proper group mapping
             let selectedGroup = "imported";
             if (groupType === "AtoH") selectedGroup = "groupB"; // Default to B for A-H
@@ -386,6 +462,7 @@
               allGroups: [groupType],
               selectedGroup,
               duration,
+              quarter,
               isCustom: true
             });
           }
@@ -396,6 +473,16 @@
     }
 
     function generateSchedule(units, startDate) {
+      const scheduleMode = document.querySelector('input[name="scheduleMode"]:checked').value;
+      
+      if (scheduleMode === 'weekly') {
+        return generateWeeklySchedule(units, startDate);
+      } else {
+        return generateQuarterlySchedule(units, startDate);
+      }
+    }
+
+    function generateWeeklySchedule(units, startDate) {
       const schedule = [];
       let currentDate = new Date(startDate);
       
@@ -413,6 +500,76 @@
         // Move to next unit start date (after this unit ends)
         currentDate = new Date(end);
         currentDate.setDate(currentDate.getDate() + 1); // Start next unit the day after previous ends
+      }
+      
+      return schedule;
+    }
+
+    function generateQuarterlySchedule(units, startDate) {
+      const schedule = [];
+      const start = new Date(startDate);
+      const year = start.getFullYear();
+      
+      // Group units by quarter
+      const quarters = {
+        1: [],
+        2: [],
+        3: [],
+        4: []
+      };
+      
+      units.forEach(unit => {
+        const quarter = unit.quarter || 1; // Default to Q1 if not specified
+        quarters[quarter].push(unit);
+      });
+      
+      // Generate dates for each quarter
+      const quarterDates = {
+        1: { start: new Date(year, 0, 1), end: new Date(year, 2, 31) },   // Q1: Jan-Mar
+        2: { start: new Date(year, 3, 1), end: new Date(year, 5, 30) },   // Q2: Apr-Jun
+        3: { start: new Date(year, 6, 1), end: new Date(year, 8, 30) },  // Q3: Jul-Sep
+        4: { start: new Date(year, 9, 1), end: new Date(year, 11, 31) }   // Q4: Oct-Dec
+      };
+      
+      // Adjust Q1 start date to match course start date if it's in Q1
+      if (start.getMonth() <= 2) {
+        quarterDates[1].start = new Date(start);
+      }
+      
+      // For each quarter, assign dates to units
+      for (const [quarter, quarterUnits] of Object.entries(quarters)) {
+        if (quarterUnits.length === 0) continue;
+        
+        const qNum = parseInt(quarter);
+        const quarterStart = new Date(quarterDates[qNum].start);
+        const quarterEnd = new Date(quarterDates[qNum].end);
+        
+        // Calculate total duration of all units in this quarter
+        const totalDuration = quarterUnits.reduce((sum, unit) => sum + unit.duration, 0);
+        const quarterWeeks = Math.ceil((quarterEnd - quarterStart) / (1000 * 60 * 60 * 24 * 7));
+        
+        if (totalDuration > quarterWeeks) {
+          alert(`Warning: The units in Q${quarter} exceed the available weeks (${totalDuration} weeks needed, ${quarterWeeks} available).`);
+        }
+        
+        // Assign dates to each unit in this quarter
+        let currentDate = new Date(quarterStart);
+        for (const unit of quarterUnits) {
+          const start = new Date(currentDate);
+          const end = new Date(start);
+          end.setDate(end.getDate() + (unit.duration * 7) - 1);
+          
+          schedule.push({
+            ...unit,
+            quarter: qNum,
+            startDate: formatDate(start),
+            endDate: formatDate(end)
+          });
+          
+          // Move to next unit start date (after this unit ends)
+          currentDate = new Date(end);
+          currentDate.setDate(currentDate.getDate() + 1);
+        }
       }
       
       return schedule;
@@ -464,6 +621,7 @@
       const studentId = document.getElementById("studentId").value || "";
       const notes = document.getElementById("notes").value;
       const override = document.getElementById("overrideRules").checked;
+      const scheduleMode = document.querySelector('input[name="scheduleMode"]:checked').value;
       const [year, month, day] = startDate.split("-");
       const start = new Date(year, month - 1, day);
       const endParts = schedule.at(-1).endDate.split("/");
@@ -474,6 +632,7 @@
         <h2>📅 Schedule for ${studentName}</h2>
         ${studentId ? `<p><strong>Student ID:</strong> ${studentId}</p>` : ''}
         ${override ? '<p style="color: #856404; background: #fff3cd; padding: 5px; border-radius: 4px;">⚠ PACKAGING RULES OVERRIDE ACTIVE</p>' : ''}
+        <p><strong>Schedule Mode:</strong> ${scheduleMode === 'quarterly' ? 'Quarterly' : 'Weekly'}</p>
         <p><strong>Actual Duration:</strong> ${weeks} weeks (${formatDate(start)} to ${formatDate(end)})</p>
       `;
       
@@ -483,20 +642,73 @@
         out += `<div class="notes-output"><strong>Notes:</strong><p>${notes.replace(/\n/g, '<br>')}</p></div>`;
       }
 
-      out += `<table><tr><th>Code</th><th>Name</th><th>Group</th><th>Start</th><th>End</th></tr>`;
-      schedule.forEach(u => {
-        let group = '';
-        if (u.selectedGroup === "core-units") group = "Core";
-        else if (u.selectedGroup === "groupI") group = "I";
-        else if (["groupB", "groupC", "groupD", "groupG"].includes(u.selectedGroup)) {
-          group = u.selectedGroup.replace("group", "").toUpperCase();
-        } else if (u.selectedGroup === "imported") group = "Imported";
+      if (scheduleMode === 'quarterly') {
+        // Group by quarter for display
+        const quarters = {};
+        schedule.forEach(u => {
+          const quarter = u.quarter || 1;
+          if (!quarters[quarter]) quarters[quarter] = [];
+          quarters[quarter].push(u);
+        });
         
-        if (u.isCustom) group += " (Custom)";
-        
-        out += `<tr><td>${u.code}</td><td>${u.name}</td><td>${group}</td><td>${u.startDate}</td><td>${u.endDate}</td></tr>`;
-      });
-      out += `</table>`;
+        // Display each quarter's units
+        for (const [quarter, quarterUnits] of Object.entries(quarters)) {
+          const quarterStart = quarterUnits[0].startDate;
+          const quarterEnd = quarterUnits[quarterUnits.length - 1].endDate;
+          
+          out += `
+            <div class="quarter-section">
+              <div class="quarter-header">Quarter ${quarter} (${quarterStart} to ${quarterEnd})</div>
+              <table>
+                <tr><th>Code</th><th>Name</th><th>Group</th><th>Start</th><th>End</th><th>Weeks</th></tr>
+          `;
+          
+          quarterUnits.forEach(u => {
+            let group = '';
+            if (u.selectedGroup === "core-units") group = "Core";
+            else if (u.selectedGroup === "groupI") group = "I";
+            else if (["groupB", "groupC", "groupD", "groupG"].includes(u.selectedGroup)) {
+              group = u.selectedGroup.replace("group", "").toUpperCase();
+            } else if (u.selectedGroup === "imported") group = "Imported";
+            
+            if (u.isCustom) group += " (Custom)";
+            
+            out += `<tr>
+              <td>${u.code}</td>
+              <td>${u.name}</td>
+              <td>${group}</td>
+              <td>${u.startDate}</td>
+              <td>${u.endDate}</td>
+              <td>${u.duration}</td>
+            </tr>`;
+          });
+          
+          out += `</table></div>`;
+        }
+      } else {
+        // Weekly schedule display
+        out += `<table><tr><th>Code</th><th>Name</th><th>Group</th><th>Start</th><th>End</th><th>Weeks</th></tr>`;
+        schedule.forEach(u => {
+          let group = '';
+          if (u.selectedGroup === "core-units") group = "Core";
+          else if (u.selectedGroup === "groupI") group = "I";
+          else if (["groupB", "groupC", "groupD", "groupG"].includes(u.selectedGroup)) {
+            group = u.selectedGroup.replace("group", "").toUpperCase();
+          } else if (u.selectedGroup === "imported") group = "Imported";
+          
+          if (u.isCustom) group += " (Custom)";
+          
+          out += `<tr>
+            <td>${u.code}</td>
+            <td>${u.name}</td>
+            <td>${group}</td>
+            <td>${u.startDate}</td>
+            <td>${u.endDate}</td>
+            <td>${u.duration}</td>
+          </tr>`;
+        });
+        out += `</table>`;
+      }
 
       document.getElementById("results").innerHTML = out;
     }
@@ -519,6 +731,17 @@
       } else {
         indicator.textContent = "❌ " + errors.join(" ");
         indicator.className = "invalid";
+      }
+    }
+
+    function updateQuarterSelectorsVisibility() {
+      const scheduleMode = document.querySelector('input[name="scheduleMode"]:checked').value;
+      const quarterSelectors = document.querySelectorAll('.quarter-selector');
+      
+      if (scheduleMode === 'quarterly') {
+        quarterSelectors.forEach(el => el.style.display = 'inline');
+      } else {
+        quarterSelectors.forEach(el => el.style.display = 'none');
       }
     }
 
@@ -555,9 +778,16 @@
         e.target.matches("input[type=checkbox]") ||
         e.target.matches("input.duration") ||
         e.target.matches("[id^='otherUnitDetails-']") ||
-        e.target.matches("#overrideRules")
+        e.target.matches("#overrideRules") ||
+        e.target.matches("input[name=scheduleMode]") ||
+        e.target.matches("select.quarter-select")
       ) {
         updateValidationIndicator();
+        
+        // Update quarter selector visibility when schedule mode changes
+        if (e.target.matches("input[name=scheduleMode]")) {
+          updateQuarterSelectorsVisibility();
+        }
       }
     });
 
